@@ -1,0 +1,25 @@
+{
+  "usuarios": [],
+
+  "instalaciones": [],
+
+  "inventario_cpe": [],
+
+  "servicio": {
+    "incidentes": []
+  },
+
+  "pqrs": [],
+
+  "indicadores": {
+    "disponibilidad": null,
+    "velocidad_bajada": null,
+    "velocidad_subida": null
+  },
+
+  "facturacion": {
+    "periodo": "",
+    "usuarios_facturados": 0,
+    "valor_total": 0
+  }
+}

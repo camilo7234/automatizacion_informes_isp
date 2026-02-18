@@ -1,0 +1,83 @@
+{
+  "periodo": {
+    "anio": null,
+    "mes": null,
+    "fecha_inicio": "",
+    "fecha_fin": ""
+  },
+
+  "identificacion_proyecto": {
+    "contrato": "AE2-040-2025",
+    "fecha_contrato": "",
+    "operador": "",
+    "codigo_proyecto": "",
+    "municipio": "Ipiales",
+    "departamento": "Nariño"
+  },
+
+  "usuarios": {
+    "total_registrados": 0,
+    "activos": 0,
+    "suspendidos": 0,
+    "retirados": 0,
+    "sustitutos": 0,
+    "pendientes_instalacion": 0
+  },
+
+  "instalaciones": {
+    "total_instaladas": 0,
+    "detalle": []
+  },
+
+  "predios_activos": [],
+
+  "predios_suspendidos_retirados": [],
+
+  "inventario_cpe": {
+    "total_disponible": 0,
+    "total_instalado": 0,
+    "total_retirado": 0,
+    "detalle": []
+  },
+
+  "servicio": {
+    "usuarios_fuera_servicio": []
+  },
+
+  "indicadores_calidad": {
+    "aplican": false,
+    "disponibilidad": null,
+    "velocidad_bajada": null,
+    "velocidad_subida": null
+  },
+
+  "pqrs": {
+    "total": 0,
+    "detalle": []
+  },
+
+  "compensaciones": {
+    "equipo_cpe": 0,
+    "instalacion": 0,
+    "mantenimiento": 0,
+    "total": 0
+  },
+
+  "facturacion": {
+    "periodo": "",
+    "usuarios_facturados": 0,
+    "valor_total": 0
+  },
+
+  "hitos": [],
+
+  "obligaciones_contractuales": [],
+
+  "riesgos": [],
+
+  "consumo_internexa": {
+    "aplica": false,
+    "trafico_mes_gb": 0,
+    "observaciones": ""
+  }
+}

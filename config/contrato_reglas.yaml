@@ -1,0 +1,139 @@
+# ============================================================
+# CONTRATO DE FOMENTO AE2 – 040 – 2025
+# Reglas contractuales ejecutables
+# Modo: INTERVENTORÍA ESTRICTA
+# ============================================================
+
+contrato:
+  nombre: "Contrato de Fomento AE2-040-2025"
+  entidad:
+    fiduciaria: "FIDUCIARIA COLOMBIANA DE COMERCIO EXTERIOR S.A. - FIDUCOLDEX"
+    patrimonio: "Patrimonio Autónomo Conectividad para Cambiar Vidas"
+  proyecto:
+    tipo: "ISP"
+    municipio: "Ipiales"
+    departamento: "Nariño"
+
+# ------------------------------------------------------------
+# CONFIGURACIÓN GLOBAL DEL SISTEMA
+# ------------------------------------------------------------
+modo:
+  validacion: "estricto"        # estricto | advertencias
+
+generacion:
+  permitir_generar_sin_validacion: false
+  permitir_secciones_incompletas: false
+  permitir_valores_nulos: false
+  permitir_texto_generico: false
+
+# ------------------------------------------------------------
+# INFORME SEMANAL
+# ------------------------------------------------------------
+informe_semanal:
+  obligatorio: true
+  corte: "viernes"
+  entrega: "lunes"
+
+  secciones:
+    instalaciones:
+      obligatorio: true
+      permitir_cero: true
+      requiere_justificacion_si_cero: true
+      campos_minimos:
+        - ubicacion_predio
+        - fecha_puesta_servicio
+        - municipio
+        - cpe_serial
+        - declaracion_juramentada
+        - contrato_prestacion_servicios
+        - soporte_puesta_servicio
+
+    compensaciones:
+      obligatorio: true
+      requiere_calculo: true
+
+    hitos_conexion:
+      obligatorio: true
+      requiere_programado_vs_ejecutado: true
+
+    usuarios_fuera_servicio:
+      obligatorio: true
+      umbral_horas_continuas: 12
+      requiere_detalle_si_existen: true
+
+# ------------------------------------------------------------
+# INFORME MENSUAL
+# ------------------------------------------------------------
+informe_mensual:
+  obligatorio: true
+
+  secciones:
+    instalaciones:
+      obligatorio: true
+      permitir_cero: true
+      requiere_justificacion_si_cero: true
+
+    estado_usuarios:
+      obligatorio: true
+      campos:
+        - activos
+        - retirados
+        - sustitutos
+
+    obligaciones_contractuales:
+      obligatorio: true
+      tipo: "analitico"
+      requiere_redaccion_tecnica: true
+      fuentes:
+        - contrato
+        - ejecucion_operativa
+        - planeacion
+
+    riesgos:
+      obligatorio: true
+      requiere_identificacion: true
+      requiere_nivel: true
+      niveles_permitidos:
+        - bajo
+        - medio
+        - alto
+      requiere_plan_mitigacion: true
+
+    indicadores_calidad:
+      obligatorio: "condicional"
+      requiere_usuarios_activos: true
+      indicadores_minimos:
+        - disponibilidad
+        - velocidad_bajada
+        - velocidad_subida
+
+    pqrs:
+      obligatorio: true
+      permitir_cero: true
+      requiere_justificacion_si_cero: true
+
+# ------------------------------------------------------------
+# REGLAS DE BLOQUEO (ANTI-SANCIÓN)
+# ------------------------------------------------------------
+bloqueos:
+  generar_informe_si:
+    - falta_seccion_obligatoria
+    - datos_incompletos
+    - incoherencia_contrato
+    - indicadores_sin_usuarios_activos
+    - instalaciones_cero_sin_justificacion
+    - pqrs_cero_sin_justificacion
+    - lenguaje_generico_detectado
+
+# ------------------------------------------------------------
+# REGLAS INTERNAS DE GERENCIA (NO CONTRACTUALES)
+# ------------------------------------------------------------
+reglas_internas:
+  informe_mensual:
+    fecha_maxima_entrega_dia: 5
+    requiere_revision_previa: true
+    tipo_revision: "gerencia"
+    observaciones:
+      - "Esta fecha no está definida en el contrato"
+      - "Regla interna para control operativo"
+      - "No constituye obligación contractual directa"
