@@ -1,0 +1,140 @@
+{
+  "modo_validacion": "estricto",
+
+  "reglas_generales": {
+    "bloquear_si_falta_campo_obligatorio": true,
+    "bloquear_si_valor_nulo": true,
+    "bloquear_si_texto_generico": true,
+    "texto_generico_prohibido": [
+      "N/A",
+      "NO APLICA",
+      "POR DEFINIR"
+    ]
+  },
+
+  "periodo": {
+    "anio": { "obligatorio": true },
+    "mes": { "obligatorio": true }
+  },
+
+  "identificacion_proyecto": {
+    "contrato": { "obligatorio": true },
+    "municipio": { "obligatorio": true },
+    "departamento": { "obligatorio": true }
+  },
+
+  "usuarios": {
+    "total_registrados": { "obligatorio": true },
+    "activos": { "obligatorio": true },
+    "suspendidos": { "obligatorio": true },
+    "retirados": { "obligatorio": true },
+    "sustitutos": { "obligatorio": true },
+    "pendientes_instalacion": { "obligatorio": true }
+  },
+
+  "instalaciones": {
+    "total_instaladas": { "obligatorio": true },
+    "detalle": {
+      "_tipo": "lista",
+      "campos": {
+        "usuario_id": { "obligatorio": true },
+        "ubicacion_predio": { "obligatorio": true },
+        "municipio": { "obligatorio": true },
+        "fecha_puesta_servicio": { "obligatorio": true },
+        "cpe_serial": { "obligatorio": true },
+        "cpe_marca": { "obligatorio": true },
+        "cpe_modelo": { "obligatorio": true }
+      }
+    }
+  },
+
+  "inventario_cpe": {
+    "total_disponible": { "obligatorio": true },
+    "total_instalado": { "obligatorio": true },
+    "total_retirado": { "obligatorio": true },
+    "detalle": {
+      "_tipo": "lista",
+      "campos": {
+        "serial": { "obligatorio": true },
+        "marca": { "obligatorio": true },
+        "modelo": { "obligatorio": true },
+        "estado": { "obligatorio": true },
+        "fecha_asignacion": { "obligatorio": true }
+      }
+    }
+  },
+
+  "servicio": {
+    "usuarios_fuera_servicio": {
+      "_tipo": "lista",
+      "campos": {
+        "usuario_id": { "obligatorio": true },
+        "fecha_inicio": { "obligatorio": true },
+        "fecha_fin": { "obligatorio": true },
+        "duracion_horas": { "obligatorio": true },
+        "causa": { "obligatorio": true }
+      }
+    }
+  },
+
+  "indicadores_calidad": {
+    "aplican": { "obligatorio": true }
+  },
+
+  "pqrs": {
+    "total": { "obligatorio": true },
+    "detalle": {
+      "_tipo": "lista",
+      "campos": {
+        "usuario_id": { "obligatorio": true },
+        "tipo": { "obligatorio": true },
+        "fecha_radicado": { "obligatorio": true },
+        "estado": { "obligatorio": true }
+      }
+    }
+  },
+
+  "facturacion": {
+    "periodo": { "obligatorio": true },
+    "usuarios_facturados": { "obligatorio": true },
+    "valor_total": { "obligatorio": true }
+  },
+
+  "compensaciones": {
+    "total": { "obligatorio": true }
+  },
+
+  "hitos": {
+    "_tipo": "lista",
+    "campos": {
+      "nombre": { "obligatorio": true },
+      "meta_acumulada": { "obligatorio": true },
+      "ejecutado": { "obligatorio": true },
+      "porcentaje_cumplimiento": { "obligatorio": true },
+      "estado": { "obligatorio": true }
+    }
+  },
+
+  "obligaciones_contractuales": {
+    "_tipo": "lista",
+    "campos": {
+      "obligacion": { "obligatorio": true },
+      "estado": { "obligatorio": true },
+      "descripcion_avance": { "obligatorio": true }
+    }
+  },
+
+  "riesgos": {
+    "_tipo": "lista",
+    "campos": {
+      "categoria": { "obligatorio": true },
+      "descripcion": { "obligatorio": true },
+      "impacto": { "obligatorio": true },
+      "plan_mitigacion": { "obligatorio": true }
+    }
+  },
+
+  "consumo_internexa": {
+    "aplica": { "obligatorio": true }
+  }
+}

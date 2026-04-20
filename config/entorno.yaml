@@ -1,0 +1,13 @@
+# config/entorno.yaml
+entorno: "dev"
+
+wispro:
+  url_base: "https://www.cloud.wispro.co"
+  login_url: "https://www.cloud.wispro.co/sign_in"  # Ajusta según sea
+  usuario: "convocatoria_05@unimosesp.com.co"
+  password: "Samlejo2025*"
+
+extraccion:
+  modo: "playwright"   # "api" o "playwright"
+  archivo_salida: "datos/entrada/wispro/wispro_datos.json"
+  tiempo_espera_segundos: 30

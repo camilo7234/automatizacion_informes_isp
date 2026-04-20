@@ -1,0 +1,53 @@
+automatizacion_informes_isp/
+│
+├── README.md
+│
+├── .venv/                     # entorno virtual (ya creado)
+│
+├── config/
+│   ├── contrato_reglas.yaml   # contrato convertido en reglas (CRÍTICO)
+│   ├── rutas.yaml             # rutas de archivos, salidas, fechas
+│   └── entorno.yaml           # configuración general (dev / prod)
+│
+├── modelos/
+│   ├── modelo_contrato.json   # modelo de datos contractual
+│   ├── modelo_wispro.json     # modelo esperado desde WISPRO
+│   └── validaciones.json      # reglas de consistencia
+│
+├── datos/
+│   ├── entrada/
+│   │   ├── wispro/            # aquí llegarán exportaciones de WISPRO
+│   │   └── manual/            # datos manuales (si aplica)
+│   │
+│   └── procesados/
+│       └── modelo_contrato/   # datos ya normalizados
+│
+├── adaptadores/
+│   ├── __init__.py
+│   └── wispro_adapter.py      # traduce WISPRO → modelo contrato
+│
+├── validadores/
+│   ├── __init__.py
+│   └── contrato_validator.py  # BLOQUEA informes inválidos
+│
+├── ia/
+│   ├── __init__.py
+│   ├── prompts/
+│   │   ├── informe_semanal.md
+│   │   └── informe_mensual_base.md
+│   └── generador_texto.py     # IA redactora controlada
+│
+├── plantillas/
+│   ├── informe_mensual_enero.md   # plantilla congelada
+│   └── informe_semanal.md
+│
+├── generadores/
+│   ├── __init__.py
+│   ├── informe_semanal.py
+│   └── informe_mensual.py
+│
+├── salidas/
+│   ├── borradores/
+│   └── finales/
+│
+└── main.py                    # orquestador
