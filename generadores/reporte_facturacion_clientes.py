@@ -79,6 +79,24 @@ def _normalizar_email(valor) -> str:
     return str(valor).strip().lower()
 
 
+def _normalizar_cedula(valor) -> str:
+    """
+    Normaliza una cédula eliminando el sufijo .0 que pandas genera
+    al leer columnas numéricas como float.
+        '1085896121.0'  →  '1085896121'
+        '1085896121'    →  '1085896121'
+        'nan'           →  ''
+    """
+    if valor is None:
+        return ""
+    s = str(valor).strip()
+    if s.lower() in ("nan", "none", ""):
+        return ""
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
 def _buscar_ultimo_archivo(carpeta: Path, patrones: list[str]) -> Path:
     """
     Busca el archivo más reciente.
@@ -717,12 +735,55 @@ def generar_reporte_facturacion() -> Path:
 
     df = df[df["ID CLIENTE"] != ""].copy()
 
+    # --------------------------------------------------------------
+    # ✅ CORRECCIÓN BUG #1 — FILTRO ANTI-DUPLICACIÓN
+    # Excluye clientes cuya cédula ya fue reportada en semanas
+    # anteriores. Usa la misma lista cedulas_procesadas que
+    # emplea csv_merger.py, garantizando coherencia entre módulos.
+    # --------------------------------------------------------------
+    cedulas_ya_procesadas = set()
+    try:
+        with open(RUTA_REGISTRO, "r", encoding="utf-8") as f:
+            _reg = json.load(f)
+        for c in _reg.get("cedulas_procesadas", []):
+            cedulas_ya_procesadas.add(_normalizar_cedula(c))
+        logger.info(
+            f"Anti-duplicación: {len(cedulas_ya_procesadas)} cédulas "
+            f"ya procesadas cargadas desde registro."
+        )
+    except Exception as e:
+        logger.warning(f"No se pudo cargar cedulas_procesadas: {e}. Se omite el filtro.")
+
+    if cedulas_ya_procesadas and "DOCUMENTO/CÉDULA" in df.columns:
+        df["_CEDULA_NORM"] = df["DOCUMENTO/CÉDULA"].apply(_normalizar_cedula)
+        total_antes = len(df["ID CLIENTE"].unique())
+        df = df[~df["_CEDULA_NORM"].isin(cedulas_ya_procesadas)].copy()
+        df = df.drop(columns=["_CEDULA_NORM"])
+        total_despues = len(df["ID CLIENTE"].unique())
+        logger.info(
+            f"Anti-duplicación aplicada: {total_antes} clientes totales → "
+            f"{total_despues} clientes nuevos → "
+            f"{total_antes - total_despues} duplicados eliminados."
+        )
+    else:
+        logger.warning(
+            "Anti-duplicación omitida: columna DOCUMENTO/CÉDULA no disponible "
+            "o registro vacío."
+        )
+
+    if df.empty:
+        logger.warning(
+            "Después del filtro anti-duplicación no quedan clientes nuevos esta semana. "
+            "No se genera reporte."
+        )
+        fecha_salida = datetime.now().strftime("%Y-%m-%d")
+        return BASE_SALIDA / f"reporte_facturacion_{fecha_salida}.xlsx"
+
     if df.empty:
         raise ValueError(
             "Después de cruzar facturas, contratos y clientes no quedaron registros válidos.\n"
             "Revisa que los archivos de Wispro tengan coincidentes los campos ID CLIENTE e ID CONTRATO."
         )
-
     # --------------------------------------------------------------
     # AGRUPACIÓN POR CLIENTE (VERSIÓN ROBUSTA)
     # --------------------------------------------------------------
@@ -766,12 +827,21 @@ def generar_reporte_facturacion() -> Path:
 
         # ----------------------------------------------------------
         # IDENTIFICACIÓN DE LA CUENTA (A0000#)
+        # Ruta 1: buscar por email en indice_email
+        # ✅ CORRECCIÓN BUG #2 — Ruta 2 (fallback): buscar por cédula
+        # en indice_cedula si la Ruta 1 no encontró coincidencia.
         # ----------------------------------------------------------
-        # IMPORTANTE:
-        # No usar "or" directo con valores pandas, porque np.nan es truthy
-        # y puede cortar la evaluación antes de probar los demás candidatos.
-        emails_candidatos = []
 
+        # --- Cargar índice de cédulas (una sola vez fuera del loop
+        #     sería más eficiente, pero aquí se mantiene el patrón
+        #     existente del módulo para no alterar más estructura) ---
+        indice_cedula = {
+            str(k).strip(): v
+            for k, v in registro.get("indice_cedula", {}).items()
+        }
+
+        # RUTA 1 — búsqueda por email
+        emails_candidatos = []
         for col in ("EMAIL", "EMAIL_CLIENTE", "EMAIL_contrato"):
             if col in grupo.columns:
                 for valor in grupo[col].tolist():
@@ -786,7 +856,7 @@ def generar_reporte_facturacion() -> Path:
                 email = candidato
                 break
 
-        # Fallback final: si no hubo coincidencia en el grupo, revisa la última fila
+        # Fallback email: última fila del grupo
         if not email:
             email_ultimo = _primer_valor_valido(
                 ultimo.get("EMAIL", None),
@@ -794,17 +864,49 @@ def generar_reporte_facturacion() -> Path:
                 ultimo.get("EMAIL_contrato", None),
             )
             email_ultimo = _normalizar_email(email_ultimo)
-
             if email_ultimo in indice_email:
                 email = email_ultimo
 
-        id_cuenta = indice_email.get(email, "SIN_ID") if email else "SIN_ID"
+        id_cuenta = indice_email.get(email, "") if email else ""
+
+        # ✅ CORRECCIÓN BUG #2 — RUTA 2: fallback por cédula
+        if not id_cuenta:
+            documento_raw = _primer_valor_valido(
+                ultimo.get("DOCUMENTO/CÉDULA", None),
+                ultimo.get("DOCUMENTO/CEDULA", None),
+            )
+            cedula_norm = _normalizar_cedula(documento_raw)
+
+            # Buscar en todas las cédulas del grupo, no solo la última fila
+            cedulas_grupo = []
+            for col in ("DOCUMENTO/CÉDULA", "DOCUMENTO/CEDULA"):
+                if col in grupo.columns:
+                    for val in grupo[col].tolist():
+                        c = _normalizar_cedula(val)
+                        if c and c not in {"nan", "none"} and c not in cedulas_grupo:
+                            cedulas_grupo.append(c)
+
+            for cedula_candidata in cedulas_grupo:
+                if cedula_candidata in indice_cedula:
+                    id_cuenta = indice_cedula[cedula_candidata]
+                    logger.info(
+                        f"ID CUENTA resuelto por cédula ({cedula_candidata}): {id_cuenta}"
+                    )
+                    break
+
+        # Si ninguna ruta encontró el ID, marcar como SIN_ID
+        if not id_cuenta:
+            id_cuenta = "SIN_ID"
+            logger.warning(
+                f"No se encontró ID CUENTA para cliente {cliente_id}. "
+                f"Emails intentados: {emails_candidatos}. "
+                f"Cédulas intentadas: {cedulas_grupo if 'cedulas_grupo' in dir() else '—'}"
+            )
 
         documento = _primer_valor_valido(
             ultimo.get("DOCUMENTO/CÉDULA", None),
             ultimo.get("DOCUMENTO/CEDULA", None),
         )
-
         # ----------------------------------------------------------
         # CONTRATOS ASOCIADOS
         # ----------------------------------------------------------
@@ -998,19 +1100,24 @@ def generar_reporte_facturacion() -> Path:
         ).fillna(0)
 
     # ---------------------------
-    # ORDEN FINAL
+    # ✅ CORRECCIÓN #4 — ORDEN FINAL POR FECHA DE CORTE
+    # Se ordena por PRÓXIMO CORTE ascendente para que los
+    # vencimientos más próximos aparezcan primero (criterio
+    # operativo ISP). Los registros sin fecha van al final.
+    # Dentro del mismo corte, se ordena por ID CUENTA.
     # ---------------------------
     if "ID CUENTA" not in df_final.columns:
         df_final["ID CUENTA"] = ""
-    if "NOMBRE" not in df_final.columns:
-        df_final["NOMBRE"] = ""
+    if "PRÓXIMO CORTE" not in df_final.columns:
+        df_final["PRÓXIMO CORTE"] = pd.NaT
 
     df_final = df_final.sort_values(
-        by=["ID CUENTA", "NOMBRE"],
+        by=["PRÓXIMO CORTE", "ID CUENTA"],
+        ascending=[True, True],
         na_position="last",
         kind="mergesort"
     ).reset_index(drop=True)
-
+    
     # ---------------------------
     # EXPORTACIÓN
     # ---------------------------

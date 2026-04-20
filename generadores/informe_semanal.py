@@ -172,8 +172,9 @@ class GeneradorInformeSemanal:
     def _guardar_ultimo_id(self, ultimo: int, df_nuevos: pd.DataFrame):
         """
         Persiste en registro_procesados.json:
-        - ultimo_id_cuenta   → para continuar secuencia la semana siguiente
-        - indice_email       → dict {email: id_cuenta} para cruzar tickets
+        - ultimo_id_cuenta  → para continuar secuencia la semana siguiente
+        - indice_email      → dict {email: id_cuenta} para cruzar en facturación y tickets
+        - indice_cedula     → dict {cedula: id_cuenta} fallback cuando el email no coincide
         Preserva todas las claves existentes del JSON (ej: seriales_cpe).
         """
         if not self.ruta_registro.exists():
@@ -183,29 +184,48 @@ class GeneradorInformeSemanal:
             data = json.load(f)
 
         # Persistir último número secuencial
-        data["ultimo_id_cuenta"]    = ultimo
+        data["ultimo_id_cuenta"] = ultimo
         data["ultima_actualizacion"] = datetime.now().isoformat()
 
         # --------------------------------------------------
         # CONSTRUIR Y ACUMULAR ÍNDICE EMAIL → ID CUENTA
         # Acumula semanas anteriores + los nuevos de esta semana
         # --------------------------------------------------
-        indice_actual = data.get("indice_email", {})
+        indice_email_actual = data.get("indice_email", {})
+
+        # ✅ CORRECCIÓN BUG #2 — NUEVO: ÍNDICE CÉDULA → ID CUENTA
+        # Permite que facturación encuentre el ID CUENTA aunque el
+        # email del CSV de facturas no coincida exactamente.
+        indice_cedula_actual = data.get("indice_cedula", {})
 
         for fila in df_nuevos.to_dict(orient="records"):
-            email      = str(fila.get("E mail", "")).strip().lower()
-            id_cuenta  = str(fila.get("ID CUENTA", "")).strip()
-            if email and email not in ("", "nan", "none") and id_cuenta:
-                indice_actual[email] = id_cuenta
+            email = str(fila.get("E mail", "")).strip().lower()
+            id_cuenta = str(fila.get("ID CUENTA", "")).strip()
+            cedula = str(fila.get("Número documento de identidad", "")).strip()
 
-        data["indice_email"] = indice_actual
+            # Limpiar sufijo .0 de la cédula por si pandas la convirtió a float
+            if cedula.endswith(".0"):
+                cedula = cedula[:-2]
+
+            if email and email not in ("", "nan", "none") and id_cuenta:
+                indice_email_actual[email] = id_cuenta
+
+            # ✅ CORRECCIÓN BUG #2 — guardar también por cédula
+            if cedula and cedula not in ("", "nan", "none") and id_cuenta:
+                indice_cedula_actual[cedula] = id_cuenta
+
+        data["indice_email"] = indice_email_actual
+        data["indice_cedula"] = indice_cedula_actual  # ✅ nueva clave en el JSON
 
         with open(self.ruta_registro, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"Último ID CUENTA guardado: A {str(ultimo).zfill(6)}")
-        logger.info(f"Índice email actualizado: {len(indice_actual)} entradas")
+        logger.info(f"Índice email actualizado: {len(indice_email_actual)} entradas")
+        logger.info(f"Índice cédula actualizado: {len(indice_cedula_actual)} entradas")  # ✅
 
+
+        
     # ------------------------------------------------------------------
     # BLOQUE 6: TRANSFORMAR REGISTROS AL FORMATO OFICIAL
     # ------------------------------------------------------------------
