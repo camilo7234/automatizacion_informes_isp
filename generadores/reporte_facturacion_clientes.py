@@ -828,7 +828,7 @@ def generar_reporte_facturacion() -> Path:
         # ----------------------------------------------------------
         # IDENTIFICACIÓN DE LA CUENTA (A0000#)
         # Ruta 1: buscar por email en indice_email
-        # ✅ CORRECCIÓN BUG #2 — Ruta 2 (fallback): buscar por cédula
+        # ✅ CORRECCIÓN #2 — Ruta 2 (fallback): buscar por cédula
         # en indice_cedula si la Ruta 1 no encontró coincidencia.
         # ----------------------------------------------------------
 
