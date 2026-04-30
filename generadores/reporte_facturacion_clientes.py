@@ -633,6 +633,21 @@ def generar_reporte_facturacion() -> Path:
     df_contratos = _asegurar_columna_canonica(df_contratos, "PLAN", ["NOMBRE PLAN_contrato", "NOMBRE PLAN", "PLAN"], requerida=False)
     df_contratos = _asegurar_columna_canonica(df_contratos, "FECHA DE ALTA", ["FECHA DE ALTA", "CREADO EL_contrato", "CREADO EL"], requerida=False)
 
+    # [C-02] Filtrar contratos deshabilitados.
+    # Wispro marca contratos suspendidos como "Deshabilitado".
+    # Esos contratos no deben entrar al reporte como activos ni generar facturación.
+    if "ESTADO CONTRATO" in df_contratos.columns:
+        antes_contratos = len(df_contratos)
+        df_contratos = df_contratos[
+            df_contratos["ESTADO CONTRATO"].str.strip().str.upper() == "HABILITADO"
+        ].copy()
+        logger.info(
+            f"[C-02] Contratos filtrados por ESTADO CONTRATO=HABILITADO: "
+            f"{antes_contratos} → {len(df_contratos)}"
+        )
+    else:
+        logger.warning("[C-02] No se encontró columna 'ESTADO CONTRATO'; no se filtraron contratos deshabilitados.")
+
     # --- FACTURAS ---
     df_facturas = _asegurar_columna_canonica(df_facturas, "ID CLIENTE", ["ID CLIENTE", "ID_CLIENTE"], requerida=True)
     df_facturas = _asegurar_columna_canonica(df_facturas, "ID CONTRATO", ["ID CONTRATO", "ID_CONTRATO"], requerida=True)
@@ -662,17 +677,39 @@ def generar_reporte_facturacion() -> Path:
     # Valor numérico para poder sumar correctamente.
     df_facturas["MONTO_NUM"] = df_facturas["MONTO"].apply(_parse_monto)
 
-    # Clasificación de estado de factura.
-    df_facturas["ES_PAGADA"] = df_facturas["ESTADO FACTURA"].apply(_clasificar_estado_factura)
-
-    # Si el estado no pudo clasificarse en ninguna fila, no bloqueamos el reporte:
-    # asumimos todas como válidas para no perder información operativa.
-    if df_facturas["ES_PAGADA"].notna().any():
-        df_facturas["ES_PAGADA"] = df_facturas["ES_PAGADA"].fillna(False)
-        logger.info("Se detectó una columna de estado de factura usable; se filtrarán las facturas pagadas.")
+    # [C-03] BALANCE_NUM: monto pendiente según Wispro.
+    # Wispro ya trae una columna BALANCE que indica deuda de la factura.
+    #  - 0.0     → factura saldada
+    #  - > 0.0   → monto pendiente
+    # La convertimos a float para poder sumar por cliente.
+    if "BALANCE" in df_facturas.columns:
+        df_facturas["BALANCE_NUM"] = df_facturas["BALANCE"].apply(_parse_monto)
     else:
-        df_facturas["ES_PAGADA"] = True
-        logger.info("No se pudo clasificar el estado de factura; se considerarán todas las facturas como referencia operativa.")
+        df_facturas["BALANCE_NUM"] = 0.0
+        logger.warning("[C-03] No se encontró columna BALANCE en facturas; BALANCE_NUM se deja en 0.0")
+
+    # [C-01] Excluir facturas ANULADAS antes de cualquier cálculo.
+    # Wispro marca como "Anulado" registros de prueba y reversiones.
+    # No representan ni deuda ni pago real — contaminarían totales.
+    _antes_anulados = len(df_facturas)
+    df_facturas = df_facturas[
+        df_facturas["ESTADO FACTURA"].str.strip().str.upper() != "ANULADO"
+    ].copy()
+    _excluidas = _antes_anulados - len(df_facturas)
+    if _excluidas > 0:
+        logger.info(f"[C-01] Facturas anuladas excluidas: {_excluidas} (quedan {len(df_facturas)})")
+
+    # [C-01] ES_PAGADA tomado directamente del campo ESTADO de Wispro.
+    # Se eliminó _clasificar_estado_factura() porque recalculaba
+    # lo que Wispro ya resolvió con criterio fiscal.
+    # "Pagado" = pagada. Cualquier otro valor = no pagada.
+    df_facturas["ES_PAGADA"] = (
+        df_facturas["ESTADO FACTURA"].str.strip().str.upper() == "PAGADO"
+    )
+    logger.info(
+        f"[C-01] Estado facturas → Pagadas: {df_facturas['ES_PAGADA'].sum()} | "
+        f"Impagas: {(~df_facturas['ES_PAGADA']).sum()}"
+    )
 
     # Fecha de referencia para detectar la factura más reciente por cliente.
     # Se prioriza la fecha de emisión; si falta, se usa el primer y luego el segundo vencimiento.
@@ -722,12 +759,29 @@ def generar_reporte_facturacion() -> Path:
                 "TELÉFONO",
                 "DIRECCIÓN",
                 "DOCUMENTO/CÉDULA",
-            }]
+                # [C-05] traemos también TIPO DE FACTURA si existe en clientes
+                "TIPO DE FACTURA",
+            } if col in df_clientes.columns]
         ],
         on="ID CLIENTE",
         how="left",
         suffixes=("", "_CLIENTE"),
     )
+
+    # [C-05] Normalizar tipo de facturación (Factura de Venta vs Comprobante/Fantasia)
+    #  - Si facturas.csv trae TIPO FACTURA, se usa como fuente principal.
+    #  - Si no, se usa TIPO DE FACTURA de clientes.csv.
+    #  - Resultado se deja en TIPO_FACTURACION para poder filtrar o segmentar después.
+    tipo_factura_facturas = df_facturas.columns[df_facturas.columns.str.upper().str.contains("TIPO FACTURA")]
+    col_tipo_facturas = tipo_factura_facturas[0] if len(tipo_factura_facturas) > 0 else None
+
+    if col_tipo_facturas and col_tipo_facturas in df.columns:
+        df["TIPO_FACTURACION"] = df[col_tipo_facturas].fillna("").astype(str).str.strip()
+    elif "TIPO DE FACTURA" in df.columns:
+        df["TIPO_FACTURACION"] = df["TIPO DE FACTURA"].fillna("").astype(str).str.strip()
+    else:
+        df["TIPO_FACTURACION"] = ""
+        logger.warning("[C-05] No se encontró TIPO FACTURA ni TIPO DE FACTURA; TIPO_FACTURACION queda vacío.")
 
     # Normalización de claves para evitar blancos
     df["ID CLIENTE"] = df["ID CLIENTE"].fillna("").astype(str).str.strip()
@@ -736,48 +790,35 @@ def generar_reporte_facturacion() -> Path:
     df = df[df["ID CLIENTE"] != ""].copy()
 
     # --------------------------------------------------------------
-    # ✅ CORRECCIÓN BUG #1 — FILTRO ANTI-DUPLICACIÓN
-    # Excluye clientes cuya cédula ya fue reportada en semanas
-    # anteriores. Usa la misma lista cedulas_procesadas que
-    # emplea csv_merger.py, garantizando coherencia entre módulos.
+    # (C-SNAPSHOT) MÓDULO DE FACTURACIÓN → SIEMPRE SNAPSHOT COMPLETO
     # --------------------------------------------------------------
-    cedulas_ya_procesadas = set()
+    # A diferencia del informe semanal, aquí NO se usa el mecanismo
+    # de anti-duplicación por cédula (cedulas_procesadas), porque:
+    #   - El estado de pago de cualquier cliente puede cambiar semana a semana.
+    #   - Necesitamos siempre la foto completa de todos los clientes
+    #     con la información MÁS RECIENTE.
+    #   - Si filtráramos por cedulas_procesadas, un cliente que estaba
+    #     en mora y luego paga nunca actualizaría su estado en este reporte.
+    #
+    # Por compatibilidad futura, solo dejamos un log informativo con
+    # la cantidad de cédulas registradas, pero NO filtramos ni cortamos
+    # el DataFrame df en este módulo.
     try:
+        cedulas_ya_procesadas = set()
         with open(RUTA_REGISTRO, "r", encoding="utf-8") as f:
             _reg = json.load(f)
         for c in _reg.get("cedulas_procesadas", []):
             cedulas_ya_procesadas.add(_normalizar_cedula(c))
         logger.info(
-            f"Anti-duplicación: {len(cedulas_ya_procesadas)} cédulas "
-            f"ya procesadas cargadas desde registro."
+            f"[SNAPSHOT] Registro de cedulas_procesadas cargado "
+            f"({len(cedulas_ya_procesadas)} cédulas), "
+            "pero NO se aplica filtro en reporte de facturación."
         )
     except Exception as e:
-        logger.warning(f"No se pudo cargar cedulas_procesadas: {e}. Se omite el filtro.")
-
-    if cedulas_ya_procesadas and "DOCUMENTO/CÉDULA" in df.columns:
-        df["_CEDULA_NORM"] = df["DOCUMENTO/CÉDULA"].apply(_normalizar_cedula)
-        total_antes = len(df["ID CLIENTE"].unique())
-        df = df[~df["_CEDULA_NORM"].isin(cedulas_ya_procesadas)].copy()
-        df = df.drop(columns=["_CEDULA_NORM"])
-        total_despues = len(df["ID CLIENTE"].unique())
-        logger.info(
-            f"Anti-duplicación aplicada: {total_antes} clientes totales → "
-            f"{total_despues} clientes nuevos → "
-            f"{total_antes - total_despues} duplicados eliminados."
-        )
-    else:
         logger.warning(
-            "Anti-duplicación omitida: columna DOCUMENTO/CÉDULA no disponible "
-            "o registro vacío."
+            f"[SNAPSHOT] No se pudo cargar cedulas_procesadas: {e}. "
+            "Se continua sin filtro (comportamiento esperado en facturación)."
         )
-
-    if df.empty:
-        logger.warning(
-            "Después del filtro anti-duplicación no quedan clientes nuevos esta semana. "
-            "No se genera reporte."
-        )
-        fecha_salida = datetime.now().strftime("%Y-%m-%d")
-        return BASE_SALIDA / f"reporte_facturacion_{fecha_salida}.xlsx"
 
     if df.empty:
         raise ValueError(
@@ -907,6 +948,7 @@ def generar_reporte_facturacion() -> Path:
             ultimo.get("DOCUMENTO/CÉDULA", None),
             ultimo.get("DOCUMENTO/CEDULA", None),
         )
+
         # ----------------------------------------------------------
         # CONTRATOS ASOCIADOS
         # ----------------------------------------------------------
@@ -948,10 +990,11 @@ def generar_reporte_facturacion() -> Path:
         # ----------------------------------------------------------
         # FACTURACIÓN (ROBUSTA)
         # ----------------------------------------------------------
-        grupo_pagado = grupo[
-            (grupo["ES_PAGADA"] == True) |
-            (grupo["MONTO_NUM"].fillna(0) > 0)
-        ].copy()
+        # [C-01] Solo facturas donde Wispro confirmó ESTADO="Pagado".
+        # Se eliminó el OR con MONTO_NUM > 0 porque las facturas IMPAGAS
+        # también tienen monto > 0, lo que inflaba FACTURAS PAGADAS
+        # y VALOR TOTAL PAGADO con deudas reales del cliente.
+        grupo_pagado = grupo[grupo["ES_PAGADA"] == True].copy()
 
         facturas_pagadas = len(grupo_pagado)
         facturas_total = len(grupo)
@@ -972,9 +1015,18 @@ def generar_reporte_facturacion() -> Path:
         # ----------------------------------------------------------
         # ESTADO GENERAL (AJUSTADO A OPERACIÓN REAL ISP)
         # ----------------------------------------------------------
+        # [C-01] El estado se determina primero por ES_PAGADA (Wispro).
+        # Antes un cliente que pagó a tiempo pero con fecha de vencimiento
+        # ya superada aparecía como "EN MORA" — incorrecto.
+        # Ahora: si Wispro dice PAGADO → AL DÍA, sin importar la fecha.
+        # Solo se evalúan fechas cuando la factura más reciente es IMPAGA.
         hoy = pd.Timestamp.today().normalize()
+        es_pagada_ultimo = bool(ultimo.get("ES_PAGADA", False))
 
-        if pd.notna(segundo_v):
+        if es_pagada_ultimo:
+            estado_general = "AL DÍA"
+
+        elif pd.notna(segundo_v):
             segundo_v_norm = pd.Timestamp(segundo_v).normalize()
             fecha_corte_real = segundo_v_norm + pd.Timedelta(days=5)
 
@@ -983,7 +1035,7 @@ def generar_reporte_facturacion() -> Path:
             elif hoy > segundo_v_norm:
                 estado_general = "ALERTA"
             else:
-                estado_general = "AL DÍA"
+                estado_general = "PENDIENTE"
 
         elif pd.notna(primer_v):
             primer_v_norm = pd.Timestamp(primer_v).normalize()
@@ -991,13 +1043,45 @@ def generar_reporte_facturacion() -> Path:
             if hoy > primer_v_norm:
                 estado_general = "ALERTA"
             else:
-                estado_general = "AL DÍA"
+                estado_general = "PENDIENTE"
+
         else:
             estado_general = "SIN FECHA"
+
 
         # ----------------------------------------------------------
         # RESULTADO FINAL POR CLIENTE
         # ----------------------------------------------------------
+        # [C-03] Se agrega DEUDA_TOTAL basada en BALANCE_NUM de Wispro.
+        # BALANCE_NUM es la suma de saldos pendientes de todas las facturas
+        # del cliente (después de excluir ANULADAS).
+        deuda_total = float(
+            grupo["BALANCE_NUM"].fillna(0).sum()
+        ) if "BALANCE_NUM" in grupo.columns else 0.0
+
+        # [C-06] Datos de morosidad que ya trae Wispro a nivel de cliente.
+        # NÚMERO DE FACTURAS IMPAGAS y BALANCE DE FACTRAS IMPAGAS
+        # vienen de wispro_clientes.csv. Si faltan, se asumen 0.
+        num_impagas_cliente = 0
+        balance_impagas_cliente = 0.0
+
+        if "NÚMERO DE FACTURAS IMPAGAS" in grupo.columns:
+            try:
+                # Tomamos el valor de la última fila no vacía del grupo
+                serie_num = grupo["NÚMERO DE FACTURAS IMPAGAS"].dropna()
+                if not serie_num.empty:
+                    num_impagas_cliente = int(float(serie_num.iloc[-1]))  # maneja "12.0"
+            except Exception:
+                num_impagas_cliente = 0
+
+        if "BALANCE DE FACTRAS IMPAGAS" in grupo.columns:
+            try:
+                serie_bal = grupo["BALANCE DE FACTRAS IMPAGAS"].dropna()
+                if not serie_bal.empty:
+                    balance_impagas_cliente = float(_parse_monto(serie_bal.iloc[-1]))
+            except Exception:
+                balance_impagas_cliente = 0.0
+
         resultados.append({
             "ID CUENTA": id_cuenta,
             "ID CLIENTE": cliente_id,
@@ -1017,6 +1101,9 @@ def generar_reporte_facturacion() -> Path:
             "MESES PAGADOS": len(meses_pagados),
             "ÚLTIMO MES PAGADO": ultimo_mes_pagado,
             "VALOR TOTAL PAGADO": total_pagado,
+            "DEUDA_TOTAL": deuda_total,                  # [C-03] saldo pendiente según Wispro (facturas)
+            "FACTURAS_IMPAGAS_CLIENTE": num_impagas_cliente,      # [C-06]
+            "BALANCE_IMPAGAS_CLIENTE": balance_impagas_cliente,   # [C-06]
 
             "FECHA EMISIÓN (FACTURA ÚLTIMA)": fecha_emision_ultima,
             "PRIMER VENCIMIENTO": primer_v,
@@ -1025,6 +1112,7 @@ def generar_reporte_facturacion() -> Path:
 
             "ESTADO GENERAL": estado_general,
         })
+
 
     # --------------------------------------------------------------
     # DATAFRAME FINAL Y EXPORTACIÓN (CORREGIDO Y ROBUSTO)
