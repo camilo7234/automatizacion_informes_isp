@@ -4,3 +4,26 @@ __pycache__/
 venv/
 env/
 .vscode/
+
+# Ignorar TODOS los archivos de datos
+datos/
+*.xlsx
+*.xls
+*.csv
+*.xlsm
+*.xlsb
+
+# Si quieres mantener la estructura de carpetas pero no los archivos
+# (crea un archivo .gitkeep dentro de las carpetas que quieras preservar)
+datos/**/*.csv
+datos/**/*.xlsx
+!datos/**/.gitkeep
+
+# Ignorar archivos de informe generados
+informes/
+*.pdf
+*.html
+
+# Archivos temporales de Excel
+~$*.xlsx
+~$*.xls

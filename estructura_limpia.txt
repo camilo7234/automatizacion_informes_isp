@@ -33,6 +33,8 @@ automatizacion_informes_isp
 │   │       ├── wispro_facturas_2026-04-07.csv
 │   │       ├── wispro_facturas_2026-04-13.csv
 │   │       └── wispro_tickets_2026-03-12.csv
+             .....
+             .....
 │   └── procesados
 │       └── modelo_contrato
 │           └── registro_procesados.json
